@@ -14,13 +14,13 @@ local last_selected_index = {}
 -- memory of shown waypoints
 local waypoint_hud_ids = {}
 
--- temporary cheap recipe to test the pads
+-- not-so-cheap recipe
 minetest.register_craft({
 	output = 'tpad:tpad',
 	recipe = {
-		{'group:wood', '', 'group:wood'},
-		{'', 'group:wood', ''},
-		{'group:wood', '', 'group:wood'},
+		{'group:wood',           'default:bronze_ingot', 'group:wood'},
+		{'default:bronze_ingot', 'group:wood',           'default:bronze_ingot'},
+		{'group:wood',           'default:bronze_ingot', 'group:wood'},
 	}
 })
 
