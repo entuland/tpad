@@ -16,7 +16,7 @@ WIP mod forum discussion: https://forum.minetest.net/viewtopic.php?f=9&t=20081
 # features
 - place down a pad and the teleport station will be immediately active
 - right-click on a pad to open the interface
-- doubleclick on a station to teleport to it
+- doubleclick on a station in the station list to teleport to it (or select it and click "teleport")
 - edit the name of each station (then either hit "enter" or click "save")
 - you can delete any station from anywhere (apart from the one you clicked to open the interface, you have to destroy it manually)
 - deleting a remote station you'll lose the relative pad
