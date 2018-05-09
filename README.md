@@ -3,6 +3,8 @@ A teleporter-pads mod for Minetest
 
 Developed and tested on Minetest 0.4.16 - try in other versions at your own risk :)
 
+WIP mod forum discussion: https://forum.minetest.net/viewtopic.php?f=9&t=20081
+
 # recipe
     W = any wood planks
     B = bronze ingot
