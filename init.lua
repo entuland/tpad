@@ -1,6 +1,6 @@
 tpad = {}
 tpad.version = "1.1"
-tpad.tile_image = "tpad-16.png"
+tpad.tile_image = "tpad-pix-16.png"
 
 -- load storage facilities and verify it
 dofile(minetest.get_modpath(minetest.get_current_modname()) .. "/storage.lua")
