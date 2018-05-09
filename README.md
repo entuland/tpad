@@ -4,11 +4,12 @@ A teleporter-pads mod for Minetest
 Developed and tested on Minetest 0.4.16 - try in other versions at your own risk :)
 
 # recipe
-W = any wood planks)
-B = bronze ingot
-WBW
-BWB
-WBW
+  W = any wood planks
+  B = bronze ingot
+  
+  WBW
+  BWB
+  WBW
 
 # features
 - place down a pad and the teleport station will be immediately active
