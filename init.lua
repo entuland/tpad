@@ -1,6 +1,8 @@
 tpad = {}
 tpad.version = "1.1"
-tpad.tile_image = "tpad-pix-16.png"
+tpad.texture = "tpad-texture.png"
+tpad.mesh = "tpad-mesh.obj"
+tpad.nodename = "tpad:tpad"
 
 -- load storage facilities and verify it
 dofile(minetest.get_modpath(minetest.get_current_modname()) .. "/storage.lua")
@@ -16,7 +18,7 @@ local waypoint_hud_ids = {}
 
 -- not-so-cheap recipe
 minetest.register_craft({
-	output = 'tpad:tpad',
+	output = tpad.nodename,
 	recipe = {
 		{'group:wood',           'default:bronze_ingot', 'group:wood'},
 		{'default:bronze_ingot', 'group:wood',           'default:bronze_ingot'},
@@ -68,18 +70,44 @@ function tpad.hud_off(playername)
 end
 
 -- ========================================================================
--- callbacks bound in register_node("tpad:tpad")
+-- callbacks bound in register_node()
 -- ========================================================================
 
-function tpad.on_construct(pos)
-	local meta = minetest.env:get_meta(pos)
-	meta:set_string("infotext", "Tpad Station - right click to interact")
+function tpad.get_pos_from_pointed(pointed)
+	local node_above = minetest.get_node_or_nil(pointed.above)
+	local node_under = minetest.get_node_or_nil(pointed.under)
+	
+	if not node_above or not node_under then return end
+	
+	if node_under.name == tpad.nodename then
+		-- bail out cause on_place() gets triggered at every rightclick and leads to ghost pads
+		return 
+	end
+	
+	local def_above = minetest.registered_nodes[node_above.name]
+						or minetest.nodedef_default
+	local def_under = minetest.registered_nodes[node_under.name]
+						or minetest.nodedef_default
+	
+	if not def_above.buildable_to and not def_under.buildable_to then return end
+	
+	if def_under.buildable_to then
+		return pointed.under
+	end
+	
+	return pointed.above
 end
 
-function tpad.after_place_node(pos, placer)
-	local meta = minetest.env:get_meta(pos)
-	meta:set_string("owner", placer:get_player_name())
-	tpad.set_pad_name(pos, "")
+function tpad.on_place(itemstack, placer, pointed_thing)
+	local pos = tpad.get_pos_from_pointed(pointed_thing)
+	itemstack = minetest.rotate_node(itemstack, placer, pointed_thing)
+	if pos then
+		local meta = minetest.env:get_meta(pos)
+		meta:set_string("owner", placer:get_player_name())
+		meta:set_string("infotext", "Tpad Station - right click to interact")
+		tpad.set_pad_name(pos, "")
+	end
+	return itemstack
 end
 
 function tpad.on_rightclick(clicked_pos, node, clicker)
@@ -334,18 +362,23 @@ end
 -- register node and bind callbacks
 -- ========================================================================
 
-minetest.register_node("tpad:tpad", {
-	tiles = {tpad.tile_image},
-	drawtype = "signlike",
-	paramtype = "light",
-	paramtype2 = "wallmounted",
-	walkable = false,
+local collision_box =  {
+	type = "fixed",
+	fixed = {
+		{ -0.5,   -0.5,  -0.5,   0.5,  -0.3, 0.5 },
+	}
+}
+
+minetest.register_node(tpad.nodename, {
+	drawtype = "mesh",
+	tiles = { tpad.texture },
+	mesh = tpad.mesh,
+	paramtype2 = "facedir",
+	on_place = tpad.on_place,
+	collision_box = collision_box,
+	selection_box = collision_box,
 	description = "Teleporter Pad",
-	inventory_image = tpad.tile_image,
 	groups = {choppy = 2, dig_immediate = 2},
-	selection_box = { type = "wallmounted"},
-	on_construct = tpad.on_construct,
-	after_place_node = tpad.after_place_node,
 	on_rightclick = tpad.on_rightclick,
 	can_dig = tpad.can_dig,
 	on_destruct = tpad.on_destruct,
