@@ -79,11 +79,6 @@ function tpad.get_pos_from_pointed(pointed)
 	
 	if not node_above or not node_under then return end
 	
-	if node_under.name == tpad.nodename then
-		-- bail out cause on_place() gets triggered at every rightclick and leads to ghost pads
-		return 
-	end
-	
 	local def_above = minetest.registered_nodes[node_above.name]
 						or minetest.nodedef_default
 	local def_under = minetest.registered_nodes[node_under.name]
@@ -99,9 +94,10 @@ function tpad.get_pos_from_pointed(pointed)
 end
 
 function tpad.on_place(itemstack, placer, pointed_thing)
-	local pos = tpad.get_pos_from_pointed(pointed_thing)
+	local pos = tpad.get_pos_from_pointed(pointed_thing) or {}
 	itemstack = minetest.rotate_node(itemstack, placer, pointed_thing)
-	if pos then
+	local placed = minetest.get_node_or_nil(pos)
+	if placed and placed.name == tpad.nodename then		
 		local meta = minetest.env:get_meta(pos)
 		meta:set_string("owner", placer:get_player_name())
 		meta:set_string("infotext", "Tpad Station - right click to interact")
