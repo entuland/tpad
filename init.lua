@@ -6,6 +6,8 @@ tpad.mesh = "tpad-mesh.obj"
 tpad.nodename = "tpad:tpad"
 tpad.mod_path = minetest.get_modpath(tpad.mod_name)
 
+local smartfs = dofile(tpad.mod_path .. "/lib/smartfs.lua")
+
 -- workaround storage to tell the main dialog about the last clicked pad
 local last_clicked_pos = {}
 
@@ -155,8 +157,9 @@ function tpad.on_place(itemstack, placer, pointed_thing)
 	local placed = minetest.get_node_or_nil(pos)
 	if placed and placed.name == tpad.nodename then		
 		local meta = minetest.env:get_meta(pos)
-		meta:set_string("owner", placer:get_player_name())
-		meta:set_string("infotext", "Tpad Station - right click to interact")
+		local playername = placer:get_player_name()
+		meta:set_string("owner", playername)
+		meta:set_string("infotext", "Tpad Station by " .. playername .. " - right click to interact")
 		tpad.set_pad_name(pos, "")
 	end
 	return itemstack
@@ -167,18 +170,111 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 	local clicked_meta = minetest.env:get_meta(clicked_pos)
 	local ownername = clicked_meta:get_string("owner")
 	local padname = tpad.get_pad_name(clicked_pos)
-	local formspec = tpad.get_main_dialog(playername, ownername, padname)
+	local padlist = tpad.get_padlist(ownername)
+	local last_index = last_selected_index[playername .. ":" .. ownername]
+	local state
+	local formname
+	local pads_listbox
 	last_clicked_pos[playername] = clicked_pos;
-	minetest.show_formspec(clicker:get_player_name(), "form_padlist", formspec)
+	
+	local function save()
+		if playername ~= ownername then
+			minetest.chat_send_player(playername, "Tpad: the selected pad doesn't belong to you")
+			return
+		end
+		tpad.set_pad_name(clicked_pos, state:get("padname_field"):getText())
+	end
+
+	local function teleport()
+		local selected_index = pads_listbox:getSelected()
+		local pad = tpad.get_pad_by_index(ownername, selected_index)
+		local player = minetest.get_player_by_name(playername)
+		player:moveto(pad.pos, false)
+		minetest.chat_send_player(playername, "Tpad: Teleported to " .. pad.name)
+		tpad.hud_off(playername)
+		minetest.after(0, function()
+			minetest.close_formspec(playername, formname)
+		end)
+	end
+
+	local function delete()
+		minetest.after(0, function()
+			local delete_pad = tpad.get_pad_by_index(ownername, pads_listbox:getSelected())
+			
+			if not delete_pad then
+				minetest.chat_send_player(playername, "Tpad: Please select a station first")
+				return
+			end
+			
+			if playername ~= ownername then
+				minetest.chat_send_player(playername, "Tpad: the selected pad doesn't belong to you")
+				return
+			end
+			
+			if minetest.pos_to_string(delete_pad.pos) == minetest.pos_to_string(clicked_pos) then
+				minetest.chat_send_player(playername, "Tpad: You can't delete the current pad, destroy it manually")
+				return
+			end
+			
+			local function reshow_main()
+				minetest.after(0, function()
+					tpad.on_rightclick(clicked_pos, node, minetest.get_player_by_name(playername))
+				end)
+			end
+
+			local delete_state = tpad.forms.confirm_pad_deletion:show(playername)
+			delete_state:get("padname_label"):setText("Are you sure you want to destroy \"" .. delete_pad.name .. "\" station?")
+			
+			local confirm_button = delete_state:get("confirm_button")
+			confirm_button:onClick(function()
+				last_selected_index[playername .. ":" .. ownername] = nil
+				tpad.del_pad(ownername, delete_pad.pos)
+				minetest.remove_node(delete_pad.pos)
+				minetest.chat_send_player(playername, "Tpad: station " .. delete_pad.name .. " destroyed")
+				reshow_main()
+			end)
+			
+			local deny_button = delete_state:get("deny_button")
+			deny_button:onClick(reshow_main)
+		end)
+	end
+	
+	if ownername == playername then
+		formname = "tpad.forms.main_owner"
+		state = tpad.forms.main_owner:show(playername)
+		state:get("padname_field"):setText(padname)
+		state:get("padname_field"):onKeyEnter(save)
+		state:get("save_button"):onClick(save)		
+		state:get("delete_button"):onClick(delete)
+	else
+		formname = "tpad.forms.main_visitor"
+		state = tpad.forms.main_visitor:show(playername)
+		state:get("visitor_label"):setText("Station \"" .. padname .. "\", owned by " .. ownername)
+	end
+
+	pads_listbox = state:get("pads_listbox")
+	pads_listbox:clearItems()
+	for _, pad_item in ipairs(padlist) do
+		pads_listbox:addItem(pad_item)
+	end
+	pads_listbox:setSelected(last_index)
+	pads_listbox:onClick(function(state)
+		last_selected_index[playername .. ":" .. ownername] = pads_listbox:getSelected()
+	end)
+	
+	pads_listbox:onDoubleClick(teleport)
+	state:get("teleport_button"):onClick(teleport)
+	
 end
 
 function tpad.can_dig(pos, player)
 	local meta = minetest.env:get_meta(pos)
 	local owner = meta:get_string("owner")
-	local name = player:get_player_name()
-	if owner == "" or owner == nil or name == owner then 
+	local playername = player:get_player_name()
+	if owner == "" or owner == nil or playername == owner then 
 		return true
 	end
+	minetest.chat_send_player(playername, "Tpad: You can't delete the current pad, destroy it manually")
 	return false
 end
 
@@ -189,189 +285,52 @@ function tpad.on_destruct(pos)
 end
 
 -- ========================================================================
--- callback bound in register_on_player_receive_fields()
+-- forms
 -- ========================================================================
 
-function tpad.on_receive_fields(player, formname, fields)
-	if formname == "form_padlist" then
-		tpad.process_padlist_fields(player, formname, fields)
-	end
-	if formname == "form_deletepad" then
-		tpad.process_deletepad_fields(player, formname, fields)
-	end
+tpad.forms = {}
+
+local function form_main_common(state)
+	local pads_listbox = state:listbox(0.2, 1.4, 7.5, 4, "pads_listbox", {})	
+	local teleport_button = state:button(0.2, 6, 1.5, 0, "teleport_button", "Teleport")
+	local close_button = state:button(6.5, 6, 1.5, 0, "close_button", "Close")
+	close_button:setClose(true)	
+	state:label(0.2, 6.5, "teleport_label", "(you can doubleclick on a station to teleport)")
 end
 
-function tpad.process_padlist_fields(player, formname, fields)
-	local playername = player:get_player_name()
-	local clicked_pos = last_clicked_pos[playername]
-	local clicked_meta = minetest.env:get_meta(clicked_pos)
-	local ownername = clicked_meta:get_string("owner");
-	
-	if fields.padlist then
-		local action, index = fields.padlist:match("(.+):(.+)")
-		index = tonumber(index)
-		if action == "DCL" then
-			-- player doubleclicked a station in the list
-			tpad.checked_pad_teleport(formname, player, playername, ownername, index)
-		else
-			last_selected_index[playername .. ":" .. ownername] = index
-		end
-		return
-	end
+tpad.forms.main_owner = smartfs.create("tpad.forms.main_owner", function(state)
+	state:size(8, 7);
+	state:field(0.5, 1, 6, 0, "padname_field", "This station name", "")
+	local save_button = state:button(6.5, 0.7, 1.5, 0, "save_button", "Save")
+	save_button:setClose(true)
+	local delete_button = state:button(3, 6, 1.5, 0, "delete_button", "Delete")
+	form_main_common(state)
+end)
 
-	local selected_index = last_selected_index[playername .. ":" .. ownername]
-	
-	if not selected_index and (fields.teleport or fields.delete) then
-		minetest.chat_send_player(playername, "Tpad: Please select a station first")
-		return
-	end
-	
-	if fields.teleport then
-		tpad.checked_pad_teleport(formname, player, playername, ownername, selected_index)
-		return
-	end
-	
-	if fields.delete then
-		local selected_pad = tpad.get_pad_by_index(ownername, selected_index)
-		if minetest.pos_to_string(selected_pad.pos) == minetest.pos_to_string(clicked_pos) then
-			minetest.chat_send_player(playername, "Tpad: You can't delete the current pad, destroy it manually")
-			return
-		end
-		tpad.confirm_pad_deletion(formname, player, playername, ownername, selected_index)
-		return
-	end
-	
-	if playername ~= ownername then return end
-	
-	local save_by_click = fields.save and fields.station
-	local save_by_enter = fields.key_enter and fields.key_enter_field == "station"
-	
-	if save_by_click or save_by_enter then
-		tpad.set_pad_name(clicked_pos, fields.station)
-	end
-end
+tpad.forms.main_visitor = smartfs.create("tpad.forms.main_visitor", function(state)
+	state:size(8, 7)
+	state:label(0.2, 0.5, "visitor_label", "")
+	form_main_common(state)
+end)
 
-function tpad.process_deletepad_fields(player, formname, fields)
-	local playername = player:get_player_name()
-	local clicked_pos = last_clicked_pos[playername]
-	local clicked_meta = minetest.env:get_meta(clicked_pos)
-	local ownername = clicked_meta:get_string("owner");
-	local selected_index = last_selected_index[playername .. ":" .. ownername]
-	local selected_pad = tpad.get_pad_by_index(ownername, selected_index)
-	if fields.confirm then
-		last_selected_index[playername .. ":" .. ownername] = nil
-		tpad.del_pad(ownername, selected_pad.pos)
-		minetest.remove_node(selected_pad.pos)
-		minetest.chat_send_player(playername, "Tpad: station " .. selected_pad.name .. " deleted")
-	else
-		minetest.chat_send_player(playername, "Tpad: deletion of " .. selected_pad.name .. " cancelled")
-	end
-	minetest.close_formspec(playername, "form_deletepad")
-	local clicked_padname = tpad.get_pad_name(clicked_pos)
-	local formspec = tpad.get_main_dialog(playername, ownername, clicked_padname)
-	minetest.show_formspec(playername, "form_padlist", formspec)
-end
-
--- ========================================================================
--- dialogs
--- ========================================================================
-
--- main dialog shown when right-clicking a pad
-function tpad.get_main_dialog(playername, ownername, padname)
-	local padlist = tpad.get_padlist(ownername)
-	local formtable = {{"size", {8, 7}}}
-	padname = minetest.formspec_escape(padname)
-	if playername == ownername then 
-		table.insert(formtable, {"field", {0.5, 1}, {6, 0}, "station", 	"This station name", padname})
-		table.insert(formtable, {"button_exit", {6.5, 0.7}, {1.5, 0}, "save", "Save"})
-		table.insert(formtable, {"button", {3, 6}, {1.5, 0}, "delete", "Delete"})
-	else
-		ownername = minetest.formspec_escape(ownername)
-		table.insert(formtable, {"label", {0.2, 0.5}, "Station \"" .. padname .. "\", owned by " .. ownername})
-	end
-	local last_index = last_selected_index[playername .. ":" .. ownername] 
-	table.insert(formtable, {"textlist", {0.2, 1.4}, {7.5, 4}, "padlist", padlist, last_index})
-	table.insert(formtable, {"button", {0.2, 6}, {1.5, 0}, "teleport", "Teleport"})
-	table.insert(formtable, {"button_exit", {6.5, 6}, {1.5, 0}, "close", "Close"})
-	table.insert(formtable, {"label", {0.2, 6.5}, "(you can doubleclick on a station to teleport)"})
-	
-	return tpad.table_to_formspec(formtable)
-end
-
--- confirmation dialog when trying to delete a pad from the main dialog
-function tpad.get_deletion_dialog(padname)
-	padname = minetest.formspec_escape(padname)
-	local formtable = {
-		{"size", {5, 2}},
-		{"label", {0, 0}, "Are you sure you want to destroy \"" .. padname .. "\" station?"},
-		{"label", {0, 0.5}, "(you will not get the pad back)"},
-		{"button_exit", {0, 1.7}, {2, 0}, "confirm", "Yes, delete it"},	
-		{"button_exit", {2, 1.7}, {2, 0}, "deny", "No, don't delete it"},
-	}
-	return tpad.table_to_formspec(formtable)
-end
+tpad.forms.confirm_pad_deletion = smartfs.create("tpad.forms.confirm_pad_deletion", function(state)
+	state:size(5, 2)
+	state:label(0, 0, "padname_label", "")
+	state:label(0, 0.5, "notice_label", "(you will not get the pad back)")
+	state:button(0, 1.7, 2, 0, "confirm_button", "Yes, delete it")
+	state:button(2, 1.7, 2, 0, "deny_button", "deny", "No, don't delete it")
+end)
 
 -- ========================================================================
 -- helper functions
 -- ========================================================================
-
-function tpad.checked_pad_teleport(formname, player, playername, ownername, index)
-	local pad = tpad.get_pad_by_index(ownername, index)
-	if not pad then
-		minetest.chat_send_player(playername, "Tpad: Unable to teleport to " .. pad.name .. ", pad not found!")
-		return
-	end
-
-	player:moveto(pad.pos, false)
-	minetest.chat_send_player(playername, "Tpad: Teleported to " .. pad.name)
-	tpad.hud_off(playername)
-	minetest.close_formspec(playername, formname)
-end
-
-function tpad.confirm_pad_deletion(formname, player, playername, ownername, index)
-	local pad = tpad.get_pad_by_index(ownername, index)
-	if not pad then
-		minetest.chat_send_player(playername, "Tpad: Unable to delete " .. pad.name .. ", pad not found!")
-		return
-	end
-
-	if playername ~= ownername then
-		-- we should never come to this point, failsafe
-		minetest.chat_send_player(playername, "Tpad: " .. pad.name .. " does not belong to you!")
-		return
-	end
-
-	local formspec = tpad.get_deletion_dialog(pad.name)
-	minetest.show_formspec(playername, "form_deletepad", formspec)
-end
-
-function tpad.table_to_formspec(formtable)
-	local output = ""
-	for r = 1, #formtable do
-		local row = formtable[r]
-		local fieldname = row[1]
-		output = output .. fieldname .. "["
-		for c = 2, #row do
-			local cell = row[c]
-			if type(cell) == "table" then
-				cell = table.concat(cell, ",")
-			end
-			output = output .. cell
-			if c < #row then
-				output = output .. ";"
-			end
-		end
-		output = output .. "]"
-	end
-	return output
-end
 
 -- prepare the list of stations to be shown in the main dialog
 function tpad.get_padlist(ownername)
 	local pads = tpad._get_stored_pads(ownername)
 	local result = {}
 	for strpos, pad in pairs(pads) do
-		table.insert(result, minetest.formspec_escape(pad.name .. " " .. strpos))
+		table.insert(result, pad.name .. " " .. strpos)
 	end
 	table.sort(result)
 	return result
@@ -384,7 +343,7 @@ function tpad.get_pad_by_index(ownername, index)
 	local chosen = padlist[index]
 	if not chosen then return end
 	for strpos, pad in pairs(pads) do
-		if chosen == minetest.formspec_escape(pad.name .. " " .. strpos) then
+		if chosen == pad.name .. " " .. strpos then
 			return {
 				pos = minetest.string_to_pos(strpos),
 				name = pad.name .. " " .. strpos,
@@ -447,7 +406,5 @@ minetest.register_node(tpad.nodename, {
 	can_dig = tpad.can_dig,
 	on_destruct = tpad.on_destruct,
 })
-
-minetest.register_on_player_receive_fields(tpad.on_receive_fields)
 
 minetest.register_chatcommand("tpad", {func = tpad.command})
