@@ -7,6 +7,7 @@ tpad.nodename = "tpad:tpad"
 tpad.mod_path = minetest.get_modpath(tpad.mod_name)
 
 local smartfs = dofile(tpad.mod_path .. "/lib/smartfs.lua")
+local notify = dofile(tpad.mod_path .. "/notify.lua")
 
 -- workaround storage to tell the main dialog about the last clicked pad
 local last_clicked_pos = {}
@@ -115,7 +116,7 @@ function tpad.command(playername, param)
 			world_pos = closest_pad.pos,
 			number = 0xFF0000,
 		})
-		minetest.chat_send_player(playername, "Waypoint to " .. closest_pad.name .. " displayed")
+		notify(playername, "Waypoint to " .. closest_pad.name .. " displayed")
 	end
 end
 
@@ -179,7 +180,7 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 	
 	local function save()
 		if playername ~= ownername then
-			minetest.chat_send_player(playername, "Tpad: the selected pad doesn't belong to you")
+			notify.warn(playername, "The selected pad doesn't belong to you")
 			return
 		end
 		tpad.set_pad_name(clicked_pos, state:get("padname_field"):getText())
@@ -190,7 +191,7 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 		local pad = tpad.get_pad_by_index(ownername, selected_index)
 		local player = minetest.get_player_by_name(playername)
 		player:moveto(pad.pos, false)
-		minetest.chat_send_player(playername, "Tpad: Teleported to " .. pad.name)
+		notify(playername, "Teleported to " .. pad.name)
 		tpad.hud_off(playername)
 		minetest.after(0, function()
 			minetest.close_formspec(playername, formname)
@@ -202,17 +203,17 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 			local delete_pad = tpad.get_pad_by_index(ownername, pads_listbox:getSelected())
 			
 			if not delete_pad then
-				minetest.chat_send_player(playername, "Tpad: Please select a station first")
+				notify.warn(playername, "Please select a station first")
 				return
 			end
 			
 			if playername ~= ownername then
-				minetest.chat_send_player(playername, "Tpad: the selected pad doesn't belong to you")
+				notify.warn(playername, "The selected pad doesn't belong to you")
 				return
 			end
 			
 			if minetest.pos_to_string(delete_pad.pos) == minetest.pos_to_string(clicked_pos) then
-				minetest.chat_send_player(playername, "Tpad: You can't delete the current pad, destroy it manually")
+				notify.warn(playername, "You can't delete the current pad, destroy it manually")
 				return
 			end
 			
@@ -230,7 +231,7 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 				last_selected_index[playername .. ":" .. ownername] = nil
 				tpad.del_pad(ownername, delete_pad.pos)
 				minetest.remove_node(delete_pad.pos)
-				minetest.chat_send_player(playername, "Tpad: station " .. delete_pad.name .. " destroyed")
+				notify(playername, "Pad " .. delete_pad.name .. " destroyed")
 				reshow_main()
 			end)
 			
@@ -274,7 +275,7 @@ function tpad.can_dig(pos, player)
 	if owner == "" or owner == nil or playername == owner then 
 		return true
 	end
-	minetest.chat_send_player(playername, "Tpad: You can't delete the current pad, destroy it manually")
+	notify.warn(playername, "This pad doesn't belong to you")
 	return false
 end
 
