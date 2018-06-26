@@ -1,11 +1,13 @@
 tpad = {}
 tpad.version = "1.1"
+tpad.mod_name = minetest.get_current_modname()
 tpad.texture = "tpad-texture.png"
 tpad.mesh = "tpad-mesh.obj"
 tpad.nodename = "tpad:tpad"
+tpad.mod_path = minetest.get_modpath(tpad.mod_name)
 
 -- load storage facilities and verify it
-dofile(minetest.get_modpath(minetest.get_current_modname()) .. "/storage.lua")
+dofile(tpad.mod_path .. "/storage.lua")
 
 -- workaround storage to tell the main dialog about the last clicked pad
 local last_clicked_pos = {}
@@ -16,15 +18,68 @@ local last_selected_index = {}
 -- memory of shown waypoints
 local waypoint_hud_ids = {}
 
--- not-so-cheap recipe
-minetest.register_craft({
-	output = tpad.nodename,
-	recipe = {
-		{'group:wood',           'default:bronze_ingot', 'group:wood'},
-		{'default:bronze_ingot', 'group:wood',           'default:bronze_ingot'},
-		{'group:wood',           'default:bronze_ingot', 'group:wood'},
-	}
-})
+-- ========================================================================
+-- local helpers
+-- ========================================================================
+
+local function copy_file(source, dest)
+	local src_file = io.open(source, "rb")
+	if not src_file then 
+		return false, "copy_file() unable to open source for reading"
+	end
+	local src_data = src_file:read("*all")
+	src_file:close()
+
+	local dest_file = io.open(dest, "wb")
+	if not dest_file then 
+		return false, "copy_file() unable to open dest for writing"
+	end
+	dest_file:write(src_data)
+	dest_file:close()
+	return true, "files copied successfully"
+end
+
+local function custom_or_default(modname, path, filename)
+	local default_filename = "default/" .. filename
+	local full_filename = path .. "/custom." .. filename
+	local full_default_filename = path .. "/" .. default_filename
+	
+	os.rename(path .. "/" .. filename, full_filename)
+	
+	local file = io.open(full_filename, "rb")
+	if not file then
+		minetest.debug("[" .. modname .. "] Copying " .. default_filename .. " to " .. filename .. " (path: " .. path .. ")")
+		local success, err = copy_file(full_default_filename, full_filename)
+		if not success then
+			minetest.debug("[" .. modname .. "] " .. err)
+			return false
+		end
+		file = io.open(full_filename, "rb")
+		if not file then
+			minetest.debug("[" .. modname .. "] Unable to load " .. filename .. " file from path " .. path)
+			return false
+		end
+	end
+	file:close()
+	return full_filename
+end
+
+-- ========================================================================
+-- load custom recipe
+-- ========================================================================
+
+local recipes_filename = custom_or_default(tpad.mod_name, tpad.mod_path, "recipes.lua")
+if recipes_filename then
+	local recipes = dofile(recipes_filename)	
+	print(dump(recipes))
+	if type(recipes) == "table" and recipes[tpad.nodename] then
+		minetest.register_craft({
+			output = tpad.nodename,
+			recipe = recipes[tpad.nodename],
+		})
+		print(dump(minetest.registered_nodes[tpad.nodename]))
+	end
+end
 
 -- ========================================================================
 -- callback bound in register_chatcommand("tpad")
