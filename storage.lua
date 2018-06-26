@@ -13,20 +13,29 @@ end
 
 function tpad._storage_sanity_check()
 	local storage_version = storage:get_string("_version")
-	if storage_version == "1" then
-		tpad._convert_storage_1()
+	local storage_path = minetest.get_worldpath() .. "/mod_storage/"
+	if storage_version == "1.1" then
+		tpad._copy_file(storage_path .. tpad.mod_name, storage_path .. tpad.mod_name .. ".1.1.backup") 
+		tpad._convert_storage_1_1()
+	elseif storage_version ~= "" and storage_version ~= tpad.version then
+		error("Mod storage version not supported, aborting to prevent data corruption")
 	end
 	storage:set_string("_version", tpad.version)
 end
 
-function tpad._convert_storage_1()
-	local serial_pads = storage:get_string("pads")
-	storage:set_string("pads", "")
-	if serial_pads == nil or serial_pads == "" then return end
-	local allpads = minetest.deserialize(serial_pads)
-	for ownername, pads in pairs(allpads) do
-		storage:set_string("pads:" .. ownername, minetest.serialize(pads))
+function tpad._convert_storage_1_1()
+	local storage_table = storage:to_table()
+	for field, value in pairs(storage_table.fields) do
+		local parts = field:split(":")
+		if parts[1] == "pads" then
+			local pads = minetest.deserialize(value)
+			for key, name in pairs(pads) do
+				pads[key] = { name = name }
+			end
+			storage_table.fields[field] = minetest.serialize(pads)
+		end
 	end
+	storage:from_table(storage_table)
 end
 
 tpad._storage_sanity_check()

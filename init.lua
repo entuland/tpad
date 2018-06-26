@@ -1,13 +1,10 @@
 tpad = {}
-tpad.version = "1.1"
+tpad.version = "1.2"
 tpad.mod_name = minetest.get_current_modname()
 tpad.texture = "tpad-texture.png"
 tpad.mesh = "tpad-mesh.obj"
 tpad.nodename = "tpad:tpad"
 tpad.mod_path = minetest.get_modpath(tpad.mod_name)
-
--- load storage facilities and verify it
-dofile(tpad.mod_path .. "/storage.lua")
 
 -- workaround storage to tell the main dialog about the last clicked pad
 local last_clicked_pos = {}
@@ -39,6 +36,9 @@ local function copy_file(source, dest)
 	return true, "files copied successfully"
 end
 
+-- alias to make copy_file() available to storage.lua
+tpad._copy_file = copy_file
+
 local function custom_or_default(modname, path, filename)
 	local default_filename = "default/" .. filename
 	local full_filename = path .. "/custom." .. filename
@@ -64,6 +64,9 @@ local function custom_or_default(modname, path, filename)
 	return full_filename
 end
 
+-- load storage facilities and verify it
+dofile(tpad.mod_path .. "/storage.lua")
+
 -- ========================================================================
 -- load custom recipe
 -- ========================================================================
@@ -71,13 +74,11 @@ end
 local recipes_filename = custom_or_default(tpad.mod_name, tpad.mod_path, "recipes.lua")
 if recipes_filename then
 	local recipes = dofile(recipes_filename)	
-	print(dump(recipes))
 	if type(recipes) == "table" and recipes[tpad.nodename] then
 		minetest.register_craft({
 			output = tpad.nodename,
 			recipe = recipes[tpad.nodename],
 		})
-		print(dump(minetest.registered_nodes[tpad.nodename]))
 	end
 end
 
@@ -94,13 +95,13 @@ function tpad.command(playername, param)
 	local shortest_distance = nil
 	local closest_pad = nil
 	local playerpos = player:getpos()
-	for strpos, padname in pairs(pads) do
+	for strpos, pad in pairs(pads) do
 		local pos = minetest.string_to_pos(strpos)
 		local distance = vector.distance(pos, playerpos)
 		if not shortest_distance or distance < shortest_distance then
 			closest_pad = {
 				pos = pos,
-				name = padname .. " " .. strpos,
+				name = pad.name .. " " .. strpos,
 			}
 			shortest_distance = distance
 		end
@@ -272,6 +273,45 @@ function tpad.process_deletepad_fields(player, formname, fields)
 end
 
 -- ========================================================================
+-- dialogs
+-- ========================================================================
+
+-- main dialog shown when right-clicking a pad
+function tpad.get_main_dialog(playername, ownername, padname)
+	local padlist = tpad.get_padlist(ownername)
+	local formtable = {{"size", {8, 7}}}
+	padname = minetest.formspec_escape(padname)
+	if playername == ownername then 
+		table.insert(formtable, {"field", {0.5, 1}, {6, 0}, "station", 	"This station name", padname})
+		table.insert(formtable, {"button_exit", {6.5, 0.7}, {1.5, 0}, "save", "Save"})
+		table.insert(formtable, {"button", {3, 6}, {1.5, 0}, "delete", "Delete"})
+	else
+		ownername = minetest.formspec_escape(ownername)
+		table.insert(formtable, {"label", {0.2, 0.5}, "Station \"" .. padname .. "\", owned by " .. ownername})
+	end
+	local last_index = last_selected_index[playername .. ":" .. ownername] 
+	table.insert(formtable, {"textlist", {0.2, 1.4}, {7.5, 4}, "padlist", padlist, last_index})
+	table.insert(formtable, {"button", {0.2, 6}, {1.5, 0}, "teleport", "Teleport"})
+	table.insert(formtable, {"button_exit", {6.5, 6}, {1.5, 0}, "close", "Close"})
+	table.insert(formtable, {"label", {0.2, 6.5}, "(you can doubleclick on a station to teleport)"})
+	
+	return tpad.table_to_formspec(formtable)
+end
+
+-- confirmation dialog when trying to delete a pad from the main dialog
+function tpad.get_deletion_dialog(padname)
+	padname = minetest.formspec_escape(padname)
+	local formtable = {
+		{"size", {5, 2}},
+		{"label", {0, 0}, "Are you sure you want to destroy \"" .. padname .. "\" station?"},
+		{"label", {0, 0.5}, "(you will not get the pad back)"},
+		{"button_exit", {0, 1.7}, {2, 0}, "confirm", "Yes, delete it"},	
+		{"button_exit", {2, 1.7}, {2, 0}, "deny", "No, don't delete it"},
+	}
+	return tpad.table_to_formspec(formtable)
+end
+
+-- ========================================================================
 -- helper functions
 -- ========================================================================
 
@@ -326,47 +366,12 @@ function tpad.table_to_formspec(formtable)
 	return output
 end
 
--- main dialog shown when right-clicking a pad
-function tpad.get_main_dialog(playername, ownername, padname)
-	local padlist = tpad.get_padlist(ownername)
-	local formtable = {{"size", {5, 5}}}
-	padname = minetest.formspec_escape(padname)
-	if playername == ownername then 
-		table.insert(formtable, {"field", {0.5, 1}, {3, 0}, "station", 	"This station name", padname})
-		table.insert(formtable, {"button_exit", {3.5, 0.7}, {1, 0}, "save", "Save"})
-		table.insert(formtable, {"button", {3.5, 2.7}, {1, 0}, "delete", "Delete"})
-	else
-		ownername = minetest.formspec_escape(ownername)
-		table.insert(formtable, {"label", {0.5, 1}, "Station \"" .. padname .. "\", owned by " .. ownername})
-	end
-	local last_index = last_selected_index[playername .. ":" .. ownername] 
-	table.insert(formtable, {"textlist", {0.2, 1.4}, {3, 3}, "padlist", padlist, last_index})
-	table.insert(formtable, {"button", {3.5, 1.7}, {1, 0}, "teleport", "Teleport"})
-	table.insert(formtable, {"button_exit", {3.5, 3.7}, {1, 0}, "close", "Close"})
-	table.insert(formtable, {"label", {0.5, 5}, "(you can doubleclick on a station to teleport)"})
-	
-	return tpad.table_to_formspec(formtable)
-end
-
--- confirmation dialog when trying to delete a pad from the main dialog
-function tpad.get_deletion_dialog(padname)
-	padname = minetest.formspec_escape(padname)
-	local formtable = {
-		{"size", {5, 2}},
-		{"label", {0, 0}, "Are you sure you want to destroy \"" .. padname .. "\" station?"},
-		{"label", {0, 0.5}, "(you will not get the pad back)"},
-		{"button_exit", {0, 1.7}, {2, 0}, "confirm", "Yes, delete it"},	
-		{"button_exit", {2, 1.7}, {2, 0}, "deny", "No, don't delete it"},
-	}
-	return tpad.table_to_formspec(formtable)
-end
-
 -- prepare the list of stations to be shown in the main dialog
 function tpad.get_padlist(ownername)
 	local pads = tpad._get_stored_pads(ownername)
 	local result = {}
-	for strpos, padname in pairs(pads) do
-		table.insert(result, minetest.formspec_escape(padname .. " " .. strpos))
+	for strpos, pad in pairs(pads) do
+		table.insert(result, minetest.formspec_escape(pad.name .. " " .. strpos))
 	end
 	table.sort(result)
 	return result
@@ -378,11 +383,11 @@ function tpad.get_pad_by_index(ownername, index)
 	local padlist = tpad.get_padlist(ownername)
 	local chosen = padlist[index]
 	if not chosen then return end
-	for strpos, padname in pairs(pads) do
-		if chosen == minetest.formspec_escape(padname .. " " .. strpos) then
+	for strpos, pad in pairs(pads) do
+		if chosen == minetest.formspec_escape(pad.name .. " " .. strpos) then
 			return {
 				pos = minetest.string_to_pos(strpos),
-				name = padname .. " " .. strpos,
+				name = pad.name .. " " .. strpos,
 			}
 		end
 	end
@@ -392,14 +397,22 @@ function tpad.get_pad_name(pos)
 	local meta = minetest.env:get_meta(pos)
 	local ownername = meta:get_string("owner")
 	local pads = tpad._get_stored_pads(ownername)
-	return pads[minetest.pos_to_string(pos)] or ""
+	local strpos = minetest.pos_to_string(pos)
+	local pad = pads[strpos]
+	return pad and pad.name or ""
 end
 
 function tpad.set_pad_name(pos, name)
 	local meta = minetest.env:get_meta(pos)
 	local ownername = meta:get_string("owner")
 	local pads = tpad._get_stored_pads(ownername)
-	pads[minetest.pos_to_string(pos)] = name
+	local strpos = minetest.pos_to_string(pos)
+	local pad = pads[strpos]
+	if pad then
+		pad.name = name
+	else
+		pads[strpos] = { name = name }
+	end
 	tpad._set_stored_pads(ownername, pads)
 end
 
