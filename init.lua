@@ -14,6 +14,16 @@ local PRIVATE_PAD = 1
 local  PUBLIC_PAD = 2
 local  GLOBAL_PAD = 4
 
+local RED_ESCAPE = minetest.get_color_escape_sequence("#FF0000")
+local GREEN_ESCAPE = minetest.get_color_escape_sequence("#00FF00")
+local BLUE_ESCAPE = minetest.get_color_escape_sequence("#0000FF")
+local YELLOW_ESCAPE = minetest.get_color_escape_sequence("#FFFF00")
+local CYAN_ESCAPE = minetest.get_color_escape_sequence("#00FFFF")
+local MAGENTA_ESCAPE = minetest.get_color_escape_sequence("#FF00FF")
+local WHITE_ESCAPE = minetest.get_color_escape_sequence("#FFFFFF")
+
+local OWNER_ESCAPE_COLOR = CYAN_ESCAPE
+
 local padtype_flag_to_string = {
 	[PRIVATE_PAD] = PRIVATE_PAD_STRING,
 	 [PUBLIC_PAD] =  PUBLIC_PAD_STRING,
@@ -260,7 +270,11 @@ function submit.delete(form)
 		end
 
 		local delete_state = tpad.forms.confirm_pad_deletion:show(form.playername)
-		delete_state:get("padname_label"):setText("Are you sure you want to destroy \"" .. delete_pad.local_fullname .. "\" pad?")
+		delete_state:get("padname_label"):setText(
+			YELLOW_ESCAPE .. delete_pad.local_fullname ..
+			WHITE_ESCAPE .. " by " ..
+			OWNER_ESCAPE_COLOR .. form.ownername
+		)
 		
 		local confirm_button = delete_state:get("confirm_button")
 		confirm_button:onClick(function()
@@ -301,7 +315,7 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 		form.formname = "tpad.forms.main_owner"
 		form.state = tpad.forms.main_owner:show(playername)
 		local padname_field = form.state:get("padname_field")
-		padname_field:setLabel("This pad name (owned by " .. ownername .. ")")
+		padname_field:setLabel("This pad name (owned by " .. OWNER_ESCAPE_COLOR .. ownername .. WHITE_ESCAPE .. ")")
 		padname_field:setText(pad.name)
 		padname_field:onKeyEnter(function() submit.save(form) end)
 		form.state:get("save_button"):onClick(function() submit.save(form) end)
@@ -314,7 +328,7 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 		form.omit_private_pads = true
 		form.formname = "tpad.forms.main_visitor"
 		form.state = tpad.forms.main_visitor:show(playername)
-		form.state:get("visitor_label"):setText("Pad \"" .. pad.name .. "\", owned by " .. ownername)
+		form.state:get("visitor_label"):setText("Pad \"" .. pad.name .. "\", owned by " .. OWNER_ESCAPE_COLOR .. ownername)
 	end
 
 	local padlist = tpad.get_padlist(ownername, form.is_global, form.omit_private_pads)
@@ -390,11 +404,12 @@ tpad.forms.main_visitor = smartfs.create("tpad.forms.main_visitor", function(sta
 end)
 
 tpad.forms.confirm_pad_deletion = smartfs.create("tpad.forms.confirm_pad_deletion", function(state)
-	state:size(5, 2)
-	state:label(0, 0, "padname_label", "")
-	state:label(0, 0.5, "notice_label", "(you will not get the pad back)")
-	state:button(0, 1.7, 2, 0, "confirm_button", "Yes, delete it")
-	state:button(2, 1.7, 2, 0, "deny_button", "deny", "No, don't delete it")
+	state:size(8, 2.5)
+	state:label(0, 0, "intro_label", "Are you sure you want to destroy pad")
+	state:label(0, 0.5, "padname_label", "")
+	state:label(0, 1, "outro_label", "(you will not get the pad back)")
+	state:button(0, 2.2, 2, 0, "confirm_button", "Yes, delete it")
+	state:button(6, 2.2, 2, 0, "deny_button", "No, keep it")
 end)
 
 -- ========================================================================
