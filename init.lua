@@ -199,6 +199,78 @@ function tpad.on_place(itemstack, placer, pointed_thing)
 	return itemstack
 end
 
+
+local submit = {}
+
+function submit.save(form)
+	if form.playername ~= form.ownername then
+		notify.warn(form.playername, "The selected pad doesn't belong to you")
+		return
+	end
+	local padname = form.state:get("padname_field"):getText()
+	local padtype = form.state:get("padtype_dropdown"):getSelectedItem()
+	tpad.set_pad_data(form.clicked_pos, padname, padtype)
+end
+
+function submit.teleport(form)
+	local selected_index = form.state:get("pads_listbox"):getSelected()
+	local pad = tpad.get_pad_by_index(form.ownername, selected_index)
+	if not pad then
+		notify.err(form.playername, "Error! Missing pad data!")
+		return
+	end
+	local player = minetest.get_player_by_name(form.playername)
+	player:moveto(pad.pos, false)
+	notify(form.playername, "Teleported to " .. pad.local_fullname)
+	tpad.hud_off(form.playername)
+	minetest.after(0, function()
+		minetest.close_formspec(form.playername, form.formname)
+	end)
+end
+
+function submit.delete(form)
+	minetest.after(0, function()
+		local pads_listbox = form.state:get("pads_listbox")
+		local delete_pad = tpad.get_pad_by_index(form.ownername, pads_listbox:getSelected())
+		
+		if not delete_pad then
+			notify.warn(form.playername, "Please select a station first")
+			return
+		end
+		
+		if form.playername ~= form.ownername then
+			notify.warn(form.playername, "The selected pad doesn't belong to you")
+			return
+		end
+		
+		if minetest.pos_to_string(delete_pad.pos) == minetest.pos_to_string(form.clicked_pos) then
+			notify.warn(form.playername, "You can't delete the current pad, destroy it manually")
+			return
+		end
+		
+		local function reshow_main()
+			minetest.after(0, function()
+				tpad.on_rightclick(form.clicked_pos, form.node, minetest.get_player_by_name(form.playername))
+			end)
+		end
+
+		local delete_state = tpad.forms.confirm_pad_deletion:show(form.playername)
+		delete_state:get("padname_label"):setText("Are you sure you want to destroy \"" .. delete_pad.local_fullname .. "\" station?")
+		
+		local confirm_button = delete_state:get("confirm_button")
+		confirm_button:onClick(function()
+			last_selected_index[form.playername .. ":" .. form.ownername] = nil
+			tpad.del_pad(form.ownername, delete_pad.pos)
+			minetest.remove_node(delete_pad.pos)
+			notify(form.playername, "Pad " .. delete_pad.local_fullname .. " destroyed")
+			reshow_main()
+		end)
+		
+		local deny_button = delete_state:get("deny_button")
+		deny_button:onClick(reshow_main)
+	end)
+end
+
 function tpad.on_rightclick(clicked_pos, node, clicker)
 	local playername = clicker:get_player_name()
 	local clicked_meta = minetest.env:get_meta(clicked_pos)
@@ -210,108 +282,44 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 		return
 	end
 	
-	local state
-	local formname
-	local pads_listbox
+	local form = {}
+	
+	form.playername = playername
+	form.ownername = ownername
+	form.clicked_pos = clicked_pos
+	form.node = node
+	
 	last_clicked_pos[playername] = clicked_pos;
-	
-	local function save()
-		if playername ~= ownername then
-			notify.warn(playername, "The selected pad doesn't belong to you")
-			return
-		end
-		local padname = state:get("padname_field"):getText()
-		local padtype = state:get("padtype_dropdown"):getSelectedItem()
-		tpad.set_pad_data(clicked_pos, padname, padtype)
-	end
 
-	local function teleport()
-		local selected_index = pads_listbox:getSelected()
-		local pad = tpad.get_pad_by_index(ownername, selected_index)
-		if not pad then
-			notify.err(playername, "Error! Missing pad data!")
-			return
-		end
-		local player = minetest.get_player_by_name(playername)
-		player:moveto(pad.pos, false)
-		notify(playername, "Teleported to " .. pad.local_fullname)
-		tpad.hud_off(playername)
-		minetest.after(0, function()
-			minetest.close_formspec(playername, formname)
-		end)
-	end
-
-	local function delete()
-		minetest.after(0, function()
-			local delete_pad = tpad.get_pad_by_index(ownername, pads_listbox:getSelected())
-			
-			if not delete_pad then
-				notify.warn(playername, "Please select a station first")
-				return
-			end
-			
-			if playername ~= ownername then
-				notify.warn(playername, "The selected pad doesn't belong to you")
-				return
-			end
-			
-			if minetest.pos_to_string(delete_pad.pos) == minetest.pos_to_string(clicked_pos) then
-				notify.warn(playername, "You can't delete the current pad, destroy it manually")
-				return
-			end
-			
-			local function reshow_main()
-				minetest.after(0, function()
-					tpad.on_rightclick(clicked_pos, node, minetest.get_player_by_name(playername))
-				end)
-			end
-
-			local delete_state = tpad.forms.confirm_pad_deletion:show(playername)
-			delete_state:get("padname_label"):setText("Are you sure you want to destroy \"" .. delete_pad.local_fullname .. "\" station?")
-			
-			local confirm_button = delete_state:get("confirm_button")
-			confirm_button:onClick(function()
-				last_selected_index[playername .. ":" .. ownername] = nil
-				tpad.del_pad(ownername, delete_pad.pos)
-				minetest.remove_node(delete_pad.pos)
-				notify(playername, "Pad " .. delete_pad.local_fullname .. " destroyed")
-				reshow_main()
-			end)
-			
-			local deny_button = delete_state:get("deny_button")
-			deny_button:onClick(reshow_main)
-		end)
-	end
-	
 	if ownername == playername then
-		formname = "tpad.forms.main_owner"
-		state = tpad.forms.main_owner:show(playername)
-		state:get("padname_field"):setText(pad.name)
-		state:get("padname_field"):onKeyEnter(save)
-		state:get("save_button"):onClick(save)
-		state:get("delete_button"):onClick(delete)
-		state:get("padtype_dropdown"):setSelectedItem(padtype_flag_to_string[pad.type])
+		form.formname = "tpad.forms.main_owner"
+		form.state = tpad.forms.main_owner:show(playername)
+		form.state:get("padname_field"):setText(pad.name)
+		form.state:get("padname_field"):onKeyEnter(function() submit.save(form) end)
+		form.state:get("save_button"):onClick(function() submit.save(form) end)
+		form.state:get("delete_button"):onClick(function() submit.delete(form) end)
+		form.state:get("padtype_dropdown"):setSelectedItem(padtype_flag_to_string[pad.type])
 	else
-		formname = "tpad.forms.main_visitor"
-		state = tpad.forms.main_visitor:show(playername)
-		state:get("visitor_label"):setText("Station \"" .. pad.name .. "\", owned by " .. ownername)
+		form.formname = "tpad.forms.main_visitor"
+		form.state = tpad.forms.main_visitor:show(playername)
+		form.state:get("visitor_label"):setText("Station \"" .. pad.name .. "\", owned by " .. ownername)
 	end
 
 	local padlist = tpad.get_padlist(ownername)
 	local last_index = last_selected_index[playername .. ":" .. ownername]
 
-	pads_listbox = state:get("pads_listbox")
+	local pads_listbox = form.state:get("pads_listbox")
 	pads_listbox:clearItems()
 	for _, pad_item in ipairs(padlist) do
 		pads_listbox:addItem(pad_item)
 	end
 	pads_listbox:setSelected(last_index)
-	pads_listbox:onClick(function(state)
+	pads_listbox:onClick(function()
 		last_selected_index[playername .. ":" .. ownername] = pads_listbox:getSelected()
 	end)
 	
-	pads_listbox:onDoubleClick(teleport)
-	state:get("teleport_button"):onClick(teleport)
+	pads_listbox:onDoubleClick(function() submit.teleport(form) end)
+	form.state:get("teleport_button"):onClick(function() submit.teleport(form) end)
 	
 end
 
