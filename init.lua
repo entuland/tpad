@@ -6,8 +6,35 @@ tpad.mesh = "tpad-mesh.obj"
 tpad.nodename = "tpad:tpad"
 tpad.mod_path = minetest.get_modpath(tpad.mod_name)
 
+local PRIVATE_PAD_STRING = "Private (only you)"
+local  PUBLIC_PAD_STRING = "Public (only your network)"
+local  GLOBAL_PAD_STRING = "Global (any network)"
+
+local PRIVATE_PAD = 1
+local  PUBLIC_PAD = 2
+local  GLOBAL_PAD = 4
+
+local padtype_flag_to_string = {
+	[PRIVATE_PAD] = PRIVATE_PAD_STRING,
+	 [PUBLIC_PAD] =  PUBLIC_PAD_STRING,
+	 [GLOBAL_PAD] =  GLOBAL_PAD_STRING,
+}
+
+local padtype_string_to_flag = {
+	[PRIVATE_PAD_STRING] = PRIVATE_PAD,
+	 [PUBLIC_PAD_STRING] =  PUBLIC_PAD,
+	 [GLOBAL_PAD_STRING] =  GLOBAL_PAD,
+}
+
+local short_padtype_string = {
+	[PRIVATE_PAD] = "private",
+	 [PUBLIC_PAD] = "public",
+	 [GLOBAL_PAD] = "global",
+}
+
 local smartfs = dofile(tpad.mod_path .. "/lib/smartfs.lua")
 local notify = dofile(tpad.mod_path .. "/notify.lua")
+local settings = Settings(tpad.mod_path .. "/custom.conf")
 
 -- workaround storage to tell the main dialog about the last clicked pad
 local last_clicked_pos = {}
@@ -17,6 +44,12 @@ local last_selected_index = {}
 
 -- memory of shown waypoints
 local waypoint_hud_ids = {}
+
+local function default_settings()
+	tpad.max_total_pads_per_player = tonumber(settings:get("max_total_pads_per_player", 100))
+	tpad.max_global_pads_per_player = tonumber(settings:get("max_global_pads_per_player", 10))
+end
+default_settings()
 
 -- ========================================================================
 -- local helpers
@@ -161,7 +194,7 @@ function tpad.on_place(itemstack, placer, pointed_thing)
 		local playername = placer:get_player_name()
 		meta:set_string("owner", playername)
 		meta:set_string("infotext", "Tpad Station by " .. playername .. " - right click to interact")
-		tpad.set_pad_name(pos, "")
+		tpad.set_pad_data(pos, "", PRIVATE_PAD_STRING)
 	end
 	return itemstack
 end
@@ -170,9 +203,13 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 	local playername = clicker:get_player_name()
 	local clicked_meta = minetest.env:get_meta(clicked_pos)
 	local ownername = clicked_meta:get_string("owner")
-	local padname = tpad.get_pad_name(clicked_pos)
-	local padlist = tpad.get_padlist(ownername)
-	local last_index = last_selected_index[playername .. ":" .. ownername]
+	local pad = tpad.get_pad_data(clicked_pos)
+	
+	if not pad or not ownername then
+		notify.err(playername, "Error! Missing pad data!")
+		return
+	end
+	
 	local state
 	local formname
 	local pads_listbox
@@ -183,15 +220,21 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 			notify.warn(playername, "The selected pad doesn't belong to you")
 			return
 		end
-		tpad.set_pad_name(clicked_pos, state:get("padname_field"):getText())
+		local padname = state:get("padname_field"):getText()
+		local padtype = state:get("padtype_dropdown"):getSelectedItem()
+		tpad.set_pad_data(clicked_pos, padname, padtype)
 	end
 
 	local function teleport()
 		local selected_index = pads_listbox:getSelected()
 		local pad = tpad.get_pad_by_index(ownername, selected_index)
+		if not pad then
+			notify.err(playername, "Error! Missing pad data!")
+			return
+		end
 		local player = minetest.get_player_by_name(playername)
 		player:moveto(pad.pos, false)
-		notify(playername, "Teleported to " .. pad.name)
+		notify(playername, "Teleported to " .. pad.local_fullname)
 		tpad.hud_off(playername)
 		minetest.after(0, function()
 			minetest.close_formspec(playername, formname)
@@ -224,14 +267,14 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 			end
 
 			local delete_state = tpad.forms.confirm_pad_deletion:show(playername)
-			delete_state:get("padname_label"):setText("Are you sure you want to destroy \"" .. delete_pad.name .. "\" station?")
+			delete_state:get("padname_label"):setText("Are you sure you want to destroy \"" .. delete_pad.local_fullname .. "\" station?")
 			
 			local confirm_button = delete_state:get("confirm_button")
 			confirm_button:onClick(function()
 				last_selected_index[playername .. ":" .. ownername] = nil
 				tpad.del_pad(ownername, delete_pad.pos)
 				minetest.remove_node(delete_pad.pos)
-				notify(playername, "Pad " .. delete_pad.name .. " destroyed")
+				notify(playername, "Pad " .. delete_pad.local_fullname .. " destroyed")
 				reshow_main()
 			end)
 			
@@ -243,15 +286,19 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 	if ownername == playername then
 		formname = "tpad.forms.main_owner"
 		state = tpad.forms.main_owner:show(playername)
-		state:get("padname_field"):setText(padname)
+		state:get("padname_field"):setText(pad.name)
 		state:get("padname_field"):onKeyEnter(save)
-		state:get("save_button"):onClick(save)		
+		state:get("save_button"):onClick(save)
 		state:get("delete_button"):onClick(delete)
+		state:get("padtype_dropdown"):setSelectedItem(padtype_flag_to_string[pad.type])
 	else
 		formname = "tpad.forms.main_visitor"
 		state = tpad.forms.main_visitor:show(playername)
-		state:get("visitor_label"):setText("Station \"" .. padname .. "\", owned by " .. ownername)
+		state:get("visitor_label"):setText("Station \"" .. pad.name .. "\", owned by " .. ownername)
 	end
+
+	local padlist = tpad.get_padlist(ownername)
+	local last_index = last_selected_index[playername .. ":" .. ownername]
 
 	pads_listbox = state:get("pads_listbox")
 	pads_listbox:clearItems()
@@ -291,27 +338,34 @@ end
 
 tpad.forms = {}
 
-local function form_main_common(state)
-	local pads_listbox = state:listbox(0.2, 1.4, 7.5, 4, "pads_listbox", {})	
-	local teleport_button = state:button(0.2, 6, 1.5, 0, "teleport_button", "Teleport")
-	local close_button = state:button(6.5, 6, 1.5, 0, "close_button", "Close")
+local function forms_add_padlist(state)
+	local pads_listbox = state:listbox(0.2, 2.4, 7.6, 4, "pads_listbox", {})	
+	local teleport_button = state:button(0.2, 7, 1.5, 0, "teleport_button", "Teleport")
+	local close_button = state:button(6.5, 7, 1.5, 0, "close_button", "Close")
 	close_button:setClose(true)	
-	state:label(0.2, 6.5, "teleport_label", "(you can doubleclick on a station to teleport)")
+	state:label(0.2, 7.5, "teleport_label", "(you can doubleclick on a station to teleport)")
 end
 
 tpad.forms.main_owner = smartfs.create("tpad.forms.main_owner", function(state)
-	state:size(8, 7);
+	state:size(8, 8);
 	state:field(0.5, 1, 6, 0, "padname_field", "This station name", "")
 	local save_button = state:button(6.5, 0.7, 1.5, 0, "save_button", "Save")
 	save_button:setClose(true)
-	local delete_button = state:button(3, 6, 1.5, 0, "delete_button", "Delete")
-	form_main_common(state)
+
+	local padtype_dropdown = state:dropdown(0.2, 1.2, 6.4, 0, "padtype_dropdown")
+	padtype_dropdown:addItem(PUBLIC_PAD_STRING)
+	padtype_dropdown:addItem(PRIVATE_PAD_STRING)
+	padtype_dropdown:addItem(GLOBAL_PAD_STRING)
+
+	local delete_button = state:button(1.9, 7, 1.5, 0, "delete_button", "Delete")
+
+	forms_add_padlist(state)
 end)
 
 tpad.forms.main_visitor = smartfs.create("tpad.forms.main_visitor", function(state)
-	state:size(8, 7)
-	state:label(0.2, 0.5, "visitor_label", "")
-	form_main_common(state)
+	state:size(8, 8)
+	state:label(0.2, 1, "visitor_label", "")
+	forms_add_padlist(state)
 end)
 
 tpad.forms.confirm_pad_deletion = smartfs.create("tpad.forms.confirm_pad_deletion", function(state)
@@ -326,53 +380,75 @@ end)
 -- helper functions
 -- ========================================================================
 
+local function decorate_pad_data(pos, pad, ownername)
+	pad = table.copy(pad)
+	if type(pos) == "string" then
+		pad.strpos = pos
+		pad.pos = minetest.string_to_pos(pos)
+	else
+		pad.pos = pos
+		pad.strpos = minetest.pos_to_string(pos)
+	end
+	pad.owner = ownername
+	pad.name = pad.name or ""
+	pad.type = pad.type or PUBLIC_PAD
+	pad.local_fullname = pad.name .. " " .. pad.strpos .. " " .. short_padtype_string[pad.type]
+	pad.global_fullname = "[" .. ownername .. "] " .. pad.name .. " " .. pad.strpos
+	return pad
+end
+
 -- prepare the list of stations to be shown in the main dialog
-function tpad.get_padlist(ownername)
+function tpad.get_padlist(ownername, isglobal)
 	local pads = tpad._get_stored_pads(ownername)
 	local result = {}
 	for strpos, pad in pairs(pads) do
-		table.insert(result, pad.name .. " " .. strpos)
+		pad = decorate_pad_data(strpos, pad, ownername)
+		if isglobal then
+			table.insert(result, pad.global_fullname)
+		else 
+			table.insert(result, pad.local_fullname)		
+		end
 	end
 	table.sort(result)
 	return result
 end
 
 -- used by the main dialog to pair up chosen station with stored pads
-function tpad.get_pad_by_index(ownername, index)
+function tpad.get_pad_by_index(ownername, index, isglobal)
 	local pads = tpad._get_stored_pads(ownername)
-	local padlist = tpad.get_padlist(ownername)
+	local padlist = tpad.get_padlist(ownername, isglobal)
 	local chosen = padlist[index]
 	if not chosen then return end
 	for strpos, pad in pairs(pads) do
-		if chosen == pad.name .. " " .. strpos then
-			return {
-				pos = minetest.string_to_pos(strpos),
-				name = pad.name .. " " .. strpos,
-			}
+		pad = decorate_pad_data(strpos, pad, ownername)
+		if chosen == pad.global_fullname or chosen == pad.local_fullname then
+			return pad
 		end
 	end
 end
 
-function tpad.get_pad_name(pos)
+function tpad.get_pad_data(pos)
 	local meta = minetest.env:get_meta(pos)
 	local ownername = meta:get_string("owner")
 	local pads = tpad._get_stored_pads(ownername)
 	local strpos = minetest.pos_to_string(pos)
 	local pad = pads[strpos]
-	return pad and pad.name or ""
+	if not pad then return end
+	return decorate_pad_data(pos, pad, ownername)
 end
 
-function tpad.set_pad_name(pos, name)
+function tpad.set_pad_data(pos, padname, padtype)
 	local meta = minetest.env:get_meta(pos)
 	local ownername = meta:get_string("owner")
 	local pads = tpad._get_stored_pads(ownername)
 	local strpos = minetest.pos_to_string(pos)
 	local pad = pads[strpos]
-	if pad then
-		pad.name = name
-	else
-		pads[strpos] = { name = name }
+	if not pad then
+		pad = {}
 	end
+	pad.name = padname
+	pad.type = padtype_string_to_flag[padtype]
+	pads[strpos] = pad
 	tpad._set_stored_pads(ownername, pads)
 end
 
