@@ -1291,6 +1291,14 @@ smartfs.element("dropdown", {
 		self.data.selected = idx
 		self.data.value = self:getItem(idx) or ""
 	end,
+	setSelectedItem = function(self,itm)
+		for idx, item in ipairs(self.data.items) do
+			if item == itm then
+				self.data.selected = idx
+				self.data.value = item
+			end
+		end
+	end,
 	getSelected = function(self)
 		self.data.selected = 1
 		if #self.data.items > 1 then
