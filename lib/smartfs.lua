@@ -1046,6 +1046,12 @@ smartfs.element("field", {
 				self:getCloseOnEnterString()
 		end
 	end,
+	setLabel = function(self,text)
+		self.data.label = text
+	end,
+	getLabel = function(self)
+		return self.data.label
+	end,
 	setText = function(self,text)
 		self:setValue(text)
 	end,
