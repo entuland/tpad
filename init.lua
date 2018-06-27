@@ -6,8 +6,8 @@ tpad.mesh = "tpad-mesh.obj"
 tpad.nodename = "tpad:tpad"
 tpad.mod_path = minetest.get_modpath(tpad.mod_name)
 
-local PRIVATE_PAD_STRING = "Private (only you)"
-local  PUBLIC_PAD_STRING = "Public (only your network)"
+local PRIVATE_PAD_STRING = "Private (only owner)"
+local  PUBLIC_PAD_STRING = "Public (only owner's network)"
 local  GLOBAL_PAD_STRING = "Global (any network)"
 
 local PRIVATE_PAD = 1
@@ -50,6 +50,11 @@ local function default_settings()
 	tpad.max_global_pads_per_player = tonumber(settings:get("max_global_pads_per_player", 10))
 end
 default_settings()
+
+minetest.register_privilege("tpad_admin", {
+	description = "Can edit and destroy any tpad",
+	give_to_singleplayer = true,
+})
 
 -- ========================================================================
 -- local helpers
@@ -203,7 +208,7 @@ end
 local submit = {}
 
 function submit.save(form)
-	if form.playername ~= form.ownername then
+	if form.playername ~= form.ownername and not minetest.get_player_privs(form.playername).tpad_admin then
 		notify.warn(form.playername, "The selected pad doesn't belong to you")
 		return
 	end
@@ -238,7 +243,7 @@ function submit.delete(form)
 			return
 		end
 		
-		if form.playername ~= form.ownername then
+		if form.playername ~= form.ownername and not minetest.get_player_privs(form.playername).tpad_admin then
 			notify.warn(form.playername, "The selected pad doesn't belong to you")
 			return
 		end
@@ -291,7 +296,7 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 	
 	last_clicked_pos[playername] = clicked_pos;
 
-	if ownername == playername then
+	if ownername == playername or minetest.get_player_privs(playername).tpad_admin then
 		form.formname = "tpad.forms.main_owner"
 		form.state = tpad.forms.main_owner:show(playername)
 		form.state:get("padname_field"):setText(pad.name)
@@ -325,9 +330,10 @@ end
 
 function tpad.can_dig(pos, player)
 	local meta = minetest.env:get_meta(pos)
-	local owner = meta:get_string("owner")
+	local ownername = meta:get_string("owner")
 	local playername = player:get_player_name()
-	if owner == "" or owner == nil or playername == owner then 
+	if ownername == "" or ownername == nil or playername == ownername 
+			or minetest.get_player_privs(playername).tpad_admin then 
 		return true
 	end
 	notify.warn(playername, "This pad doesn't belong to you")
