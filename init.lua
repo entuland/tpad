@@ -219,7 +219,7 @@ end
 
 function submit.teleport(form)
 	local selected_index = form.state:get("pads_listbox"):getSelected()
-	local pad = tpad.get_pad_by_index(form.ownername, selected_index)
+	local pad = tpad.get_pad_by_index(form.ownername, selected_index, form.is_global, form.omit_private_pads)
 	if not pad then
 		notify.err(form.playername, "Error! Missing pad data!")
 		return
@@ -236,7 +236,7 @@ end
 function submit.delete(form)
 	minetest.after(0, function()
 		local pads_listbox = form.state:get("pads_listbox")
-		local delete_pad = tpad.get_pad_by_index(form.ownername, pads_listbox:getSelected())
+		local delete_pad = tpad.get_pad_by_index(form.ownername, pads_listbox:getSelected(), form.is_global, form.omit_private_pads)
 		
 		if not delete_pad then
 			notify.warn(form.playername, "Please select a pad first")
@@ -293,9 +293,10 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 	form.ownername = ownername
 	form.clicked_pos = clicked_pos
 	form.node = node
+	form.omit_private_pads = false
+	form.is_global = false
 	
 	last_clicked_pos[playername] = clicked_pos;
-	
 	if ownername == playername or minetest.get_player_privs(playername).tpad_admin then
 		form.formname = "tpad.forms.main_owner"
 		form.state = tpad.forms.main_owner:show(playername)
@@ -310,12 +311,13 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 		notify.warn(playername, "This pad is private")
 		return
 	else
+		form.omit_private_pads = true
 		form.formname = "tpad.forms.main_visitor"
 		form.state = tpad.forms.main_visitor:show(playername)
 		form.state:get("visitor_label"):setText("Pad \"" .. pad.name .. "\", owned by " .. ownername)
 	end
 
-	local padlist = tpad.get_padlist(ownername)
+	local padlist = tpad.get_padlist(ownername, form.is_global, form.omit_private_pads)
 	local last_index = last_selected_index[playername .. ":" .. ownername]
 
 	local pads_listbox = form.state:get("pads_listbox")
@@ -417,15 +419,18 @@ local function decorate_pad_data(pos, pad, ownername)
 end
 
 -- prepare the list of pads to be shown in the main dialog
-function tpad.get_padlist(ownername, isglobal)
+function tpad.get_padlist(ownername, is_global, omit_private_pads)
 	local pads = tpad._get_stored_pads(ownername)
 	local result = {}
 	for strpos, pad in pairs(pads) do
 		pad = decorate_pad_data(strpos, pad, ownername)
-		if isglobal then
-			table.insert(result, pad.global_fullname)
-		else 
-			table.insert(result, pad.local_fullname)		
+		local skip = omit_private_pads and pad.type == PRIVATE_PAD
+		if not skip then
+			if is_global then
+				table.insert(result, pad.global_fullname)
+			else
+				table.insert(result, pad.local_fullname)		
+			end
 		end
 	end
 	table.sort(result)
@@ -433,9 +438,9 @@ function tpad.get_padlist(ownername, isglobal)
 end
 
 -- used by the main dialog to pair up chosen pad with stored pads
-function tpad.get_pad_by_index(ownername, index, isglobal)
+function tpad.get_pad_by_index(ownername, index, is_global, omit_private_pads)
 	local pads = tpad._get_stored_pads(ownername)
-	local padlist = tpad.get_padlist(ownername, isglobal)
+	local padlist = tpad.get_padlist(ownername, is_global, omit_private_pads)
 	local chosen = padlist[index]
 	if not chosen then return end
 	for strpos, pad in pairs(pads) do
