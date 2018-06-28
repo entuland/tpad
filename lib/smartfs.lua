@@ -1175,6 +1175,10 @@ smartfs.element("list", {
 		if not self.data.items then
 			self.data.items = {}
 		end
+		local escaped = {}
+		for i, v in ipairs(self.data.items) do
+			escaped[i] = minetest.formspec_escape(v)
+		end
 		return "textlist["..
 				self.data.pos.x..","..self.data.pos.y..
 				";"..
@@ -1182,7 +1186,7 @@ smartfs.element("list", {
 				";"..
 				self:getAbsName()..
 				";"..
-				table.concat(self.data.items, ",")..
+				table.concat(escaped, ",")..
 				";"..
 				tostring(self.data.selected or "")..
 				";"..
@@ -1211,7 +1215,7 @@ smartfs.element("list", {
 		self._doubleClick = func
 	end,
 	addItem = function(self, item)
-		table.insert(self.data.items, minetest.formspec_escape(item))
+		table.insert(self.data.items, item)
 		-- return the index of item. It is the last one
 		return #self.data.items
 	end,
