@@ -217,6 +217,25 @@ end
 
 local submit = {}
 
+function submit.global_helper()
+	local allpads = tpad._get_all_pads()
+	local result = {
+		by_name = {},
+		by_index = {},
+	}
+	for ownername, pads in pairs(allpads) do
+		for strpos, pad in pairs(pads) do
+			if pad.type == GLOBAL_PAD then
+				pad = tpad.decorate_pad_data(strpos, pad, ownername)
+				table.insert(result.by_index, pad.global_fullname)
+				result.by_name[pad.global_fullname] = pad
+			end
+		end
+	end	
+	table.sort(result.by_index)
+	return result
+end
+
 function submit.save(form)
 	if form.playername ~= form.ownername and not minetest.get_player_privs(form.playername).tpad_admin then
 		notify.warn(form.playername, "The selected pad doesn't belong to you")
@@ -257,21 +276,7 @@ function submit.global(form)
 	form.state = tpad.forms.global_network:show(form.playername)
 	form.formname = "tpad.forms.global_network"
 
-	local allpads = tpad._get_all_pads()
-	form.global = {
-		by_name = {},
-		by_index = {},
-	}
-	for ownername, pads in pairs(allpads) do
-		for strpos, pad in pairs(pads) do
-			if pad.type == GLOBAL_PAD then
-				pad = tpad.decorate_pad_data(strpos, pad, ownername)
-				table.insert(form.global.by_index, pad.global_fullname)
-				form.global.by_name[pad.global_fullname] = pad
-			end
-		end
-	end	
-	table.sort(form.global.by_index)
+	form.global = submit.global_helper()
 
 	local last_index = last_selected_global_index[form.playername]
 	local pads_listbox = form.state:get("pads_listbox")
