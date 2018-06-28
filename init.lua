@@ -5,6 +5,7 @@ tpad.texture = "tpad-texture.png"
 tpad.mesh = "tpad-mesh.obj"
 tpad.nodename = "tpad:tpad"
 tpad.mod_path = minetest.get_modpath(tpad.mod_name)
+tpad.settings_file = minetest.get_worldpath() .. "/mod_storage/" .. tpad.mod_name .. ".custom.conf"
 
 local PRIVATE_PAD_STRING = "Private (only owner)"
 local  PUBLIC_PAD_STRING = "Public (only owner's network)"
@@ -44,7 +45,6 @@ local short_padtype_string = {
 
 local smartfs = dofile(tpad.mod_path .. "/lib/smartfs.lua")
 local notify = dofile(tpad.mod_path .. "/notify.lua")
-local settings = Settings(tpad.mod_path .. "/custom.conf")
 
 -- workaround storage to tell the main dialog about the last clicked pad
 local last_clicked_pos = {}
@@ -55,12 +55,6 @@ local last_selected_global_index = {}
 
 -- memory of shown waypoints
 local waypoint_hud_ids = {}
-
-local function default_settings()
-	tpad.max_total_pads_per_player = tonumber(settings:get("max_total_pads_per_player", 100))
-	tpad.max_global_pads_per_player = tonumber(settings:get("max_global_pads_per_player", 10))
-end
-default_settings()
 
 minetest.register_privilege("tpad_admin", {
 	description = "Can edit and destroy any tpad",
@@ -202,6 +196,10 @@ function tpad.get_pos_from_pointed(pointed)
 end
 
 function tpad.on_place(itemstack, placer, pointed_thing)
+	if tpad.max_total_pads_reached(placer) then
+		notify.warn(placer, "You can't place any more pads")
+		return itemstack
+	end
 	local pos = tpad.get_pos_from_pointed(pointed_thing) or {}
 	itemstack = minetest.rotate_node(itemstack, placer, pointed_thing)
 	local placed = minetest.get_node_or_nil(pos)
@@ -216,6 +214,65 @@ function tpad.on_place(itemstack, placer, pointed_thing)
 end
 
 local submit = {}
+
+function tpad.set_max_total_pads(max)
+	if not max then max = 0 end
+	local settings = Settings(tpad.settings_file)
+	settings:set("max_total_pads_per_player", max)
+	settings:write()
+end
+
+function tpad.get_max_total_pads()
+	local settings = Settings(tpad.settings_file)
+	local max = tonumber(settings:get("max_total_pads_per_player"))
+	if not max then
+		tpad.set_max_total_pads(100)
+		return 100
+	end
+	return max
+end
+tpad.get_max_total_pads()
+
+function tpad.set_max_global_pads(max)
+	if not max then max = 0 end
+	local settings = Settings(tpad.settings_file)
+	settings:set("max_global_pads_per_player", max)
+	settings:write()
+end
+
+function tpad.get_max_global_pads()
+	local settings = Settings(tpad.settings_file)
+	local max = tonumber(settings:get("max_global_pads_per_player"))
+	if not max then
+		tpad.set_max_global_pads(4)
+		return 4
+	end
+	return max
+end
+tpad.get_max_global_pads()
+
+function tpad.max_total_pads_reached(placer)
+	local placername = placer:get_player_name()
+	if minetest.get_player_privs(placername).tpad_admin then
+		return false
+	end
+	local localnet = submit.local_helper(placername)
+	return #localnet.by_index >= tpad.get_max_total_pads()
+end
+
+function tpad.max_global_pads_reached(playername)
+	if minetest.get_player_privs(playername).tpad_admin then
+		return false
+	end
+	local localnet = submit.local_helper(playername)
+	local count = 0
+	for _, pad in pairs(localnet.by_name) do
+		if pad.type == GLOBAL_PAD then
+			count = count + 1
+		end
+	end
+	return count >= tpad.get_max_global_pads()
+end
 
 function submit.global_helper()
 	local allpads = tpad._get_all_pads()
@@ -260,8 +317,12 @@ function submit.save(form)
 		return
 	end
 	local padname = form.state:get("padname_field"):getText()
-	local padtype = form.state:get("padtype_dropdown"):getSelectedItem()
-	tpad.set_pad_data(form.clicked_pos, padname, padtype)
+	local strpadtype = form.state:get("padtype_dropdown"):getSelectedItem()
+	if strpadtype == GLOBAL_PAD_STRING and tpad.max_global_pads_reached(form.playername) then
+		notify.warn(form.playername, "Can't add more pads to the Global Network, set to 'Public' instead")
+		strpadtype = PUBLIC_PAD_STRING
+	end
+	tpad.set_pad_data(form.clicked_pos, padname, strpadtype)
 end
 
 function submit.teleport(form)
@@ -289,10 +350,44 @@ function submit.teleport(form)
 	end)
 end
 
-function submit.global(form)
-	form.state = tpad.forms.global_network:show(form.playername)
-	form.formname = "tpad.forms.global_network"
+function submit.admin(form)
+	form.state = tpad.forms.admin:show(form.playername)
+	form.formname = "tpad.forms.admin"
+	
+	local max_total_field = form.state:get("max_total_field")
+	max_total_field:setText(tpad.get_max_total_pads())
+	
+	local max_global_field = form.state:get("max_global_field")
+	max_global_field:setText(tpad.get_max_global_pads())
 
+	local function admin_save()
+		local max_total = tonumber(max_total_field:getText())
+		local max_global = tonumber(max_global_field:getText())
+		tpad.set_max_total_pads(max_total)
+		tpad.set_max_global_pads(max_global)
+		minetest.after(0, function()
+			minetest.close_formspec(form.playername, form.formname)
+		end)
+	end
+	max_total_field:onKeyEnter(admin_save)
+	max_total_field:onKeyEnter(admin_save)	
+	form.state:get("save_button"):onClick(admin_save)
+end
+
+function submit.global(form)
+	if minetest.get_player_privs(form.playername).tpad_admin then
+		form.state = tpad.forms.global_network_admin:show(form.playername)
+		form.formname = "tpad.forms.global_network_admin"
+		form.state:get("admin_button"):onClick(function()
+			minetest.after(0, function()
+				submit.admin(form)
+			end)
+		end)
+	else
+		form.state = tpad.forms.global_network:show(form.playername)
+		form.formname = "tpad.forms.global_network"
+	end
+	
 	form.globalnet = submit.global_helper()
 
 	local last_index = last_selected_global_index[form.playername]
@@ -478,8 +573,8 @@ tpad.forms.main_owner = smartfs.create("tpad.forms.main_owner", function(state)
 	save_button:setClose(true)
 
 	local padtype_dropdown = state:dropdown(0.2, 1.2, 6.4, 0, "padtype_dropdown")
-	padtype_dropdown:addItem(PUBLIC_PAD_STRING)
 	padtype_dropdown:addItem(PRIVATE_PAD_STRING)
+	padtype_dropdown:addItem(PUBLIC_PAD_STRING)
 	padtype_dropdown:addItem(GLOBAL_PAD_STRING)
 
 	local delete_button = state:button(4.4, 7, 1.5, 0, "delete_button", "Delete")
@@ -507,6 +602,26 @@ tpad.forms.global_network = smartfs.create("tpad.forms.global_network", function
 	state:label(0.2, 1, "visitor_label", "Pick a pad from the Global Pads Network")
 	local is_global = true
 	forms_add_padlist(state, is_global)
+end)
+
+tpad.forms.global_network_admin = smartfs.create("tpad.forms.global_network_admin", function(state)
+	state:size(8, 8)
+	state:label(0.2, 1, "visitor_label", "Pick a pad from the Global Pads Network")
+	local admin_button = state:button(4.4, 7, 1.5, 0, "admin_button", "Admin")
+	admin_button:setClose(true)
+	local is_global = true
+	forms_add_padlist(state, is_global)
+end)
+
+tpad.forms.admin = smartfs.create("tpad.forms.admin", function(state)
+	state:size(8, 8)
+	state:label(0.2, 0.2, "admin_label", "TPAD Settings")
+	state:field(0.5, 2, 6, 0, "max_total_field", "Max total pads per player")
+	state:field(0.5, 3.5, 6, 0, "max_global_field", "Max global pads per player")
+	local save_button = state:button(6.5, 0.7, 1.5, 0, "save_button", "Save")
+	save_button:setClose(true)
+	local close_button = state:button(6.5, 7, 1.5, 0, "close_button", "Close")
+	close_button:setClose(true)	
 end)
 
 -- ========================================================================
