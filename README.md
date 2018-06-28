@@ -5,7 +5,17 @@ Developed and tested on Minetest 0.4.16 - try in other versions at your own risk
 
 WIP mod forum discussion: https://forum.minetest.net/viewtopic.php?f=9&t=20081
 
-# Recipe
+**Table of Contents**
+- [Recipe](#recipe)
+- [Features](#features)
+- [Appearance](#appearance)
+- [Pad types](#pad-types)
+- [Pad interaction](#pad-interaction)
+- [Closest pad waypoint](#closest-pad-waypoint)
+- [Pad admin](#pad-admin)
+- [Screenshots](#screenshots)
+
+## Recipe
 The recipe can be customized altering the file `custom.recipes.lua`, created in the mod's folder on first run and never overwritten.
 
     W = any wood planks
@@ -15,11 +25,19 @@ The recipe can be customized altering the file `custom.recipes.lua`, created in 
     BWB
     WBW
 
-# Features
+![Crafting](/screenshots/crafting.png)
+
+## Features
 
 With these pads players can build their own Local Network and collaborate to build a Global Network shared among all players.
 
 Pads are sorted by name in the lists, the Global Network list groups them by owner name first.
+
+## Apperance
+
+This is how a pad looks like when placed against a wall or on the floor (they can be placed under the ceiling as well):
+
+![Pads](/screenshots/pads.png)
 
 ## Pad types
 
@@ -48,7 +66,7 @@ A `tpad_admin` privilege is available, players with such privilege can access, a
 
 Limits can be edited by admins directly in the admin interface (reachable from the "Global Network" dialog of any pad); limits get stored on a per-world basis in the file `/mod_storage/tpad.custom.conf`. By default a player can place up to 100 pads, and of these, only 4 can appear in the Global Network.
 
-# Screenshots
+## Screenshots
 
 A public pad's interface seen by a visitor:
 
