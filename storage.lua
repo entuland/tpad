@@ -1,6 +1,21 @@
 
 local storage = minetest.get_mod_storage()
 
+function tpad._get_all_pads()
+	local storage_table = storage:to_table()
+	local allpads = {}
+	for key, value in pairs(storage_table.fields) do
+		local parts = key:split(":")
+		if parts[1] == "pads" then
+			local pads = minetest.deserialize(value)
+			if type(pads) == "table" then
+				allpads[parts[2]] = pads			
+			end
+		end
+	end
+	return allpads
+end
+
 function tpad._get_stored_pads(ownername)
 	local serial_pads = storage:get_string("pads:" .. ownername)
 	if serial_pads == nil or serial_pads == "" then return {} end
