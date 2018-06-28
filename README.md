@@ -33,7 +33,7 @@ With these pads players can build their own Local Network and collaborate to bui
 
 Pads are sorted by name in the lists, the Global Network list groups them by owner name first.
 
-## Apperance
+## Appearance
 
 This is how a pad looks like when placed against a wall or on the floor (they can be placed under the ceiling as well):
 
