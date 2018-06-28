@@ -236,6 +236,24 @@ function submit.global_helper()
 	return result
 end
 
+function submit.local_helper(ownername, omit_private_pads)
+	local pads = tpad._get_stored_pads(ownername)
+	local result = {
+		by_name = {},
+		by_index = {},
+	}
+	for strpos, pad in pairs(pads) do
+		local skip = omit_private_pads and pad.type == PRIVATE_PAD
+		if not skip then
+			pad = tpad.decorate_pad_data(strpos, pad, ownername)
+			table.insert(result.by_index, pad.local_fullname)
+			result.by_name[pad.local_fullname] = pad
+		end
+	end
+	table.sort(result.by_index)
+	return result
+end
+
 function submit.save(form)
 	if form.playername ~= form.ownername and not minetest.get_player_privs(form.playername).tpad_admin then
 		notify.warn(form.playername, "The selected pad doesn't belong to you")
@@ -248,13 +266,12 @@ end
 
 function submit.teleport(form)
 	local pads_listbox = form.state:get("pads_listbox")
-	local selected_index = pads_listbox:getSelected()
 	local selected_item = pads_listbox:getSelectedItem()
 	local pad
-	if form.global then
-		pad = form.global.by_name[selected_item]
+	if form.globalnet then
+		pad = form.globalnet.by_name[selected_item]
 	else
-		pad = tpad.get_pad_by_index(form.ownername, selected_index, form.omit_private_pads)
+		pad = form.localnet.by_name[selected_item]
 	end
 	if not pad then
 		notify.err(form.playername, "Error! Missing pad data!")
@@ -263,7 +280,7 @@ function submit.teleport(form)
 	local player = minetest.get_player_by_name(form.playername)
 	player:moveto(pad.pos, false)
 	
-	local padname = form.global and pad.global_fullname or pad.local_fullname
+	local padname = form.globalnet and pad.global_fullname or pad.local_fullname
 	notify(form.playername, "Teleported to " .. padname)
 	
 	tpad.hud_off(form.playername)
@@ -276,13 +293,13 @@ function submit.global(form)
 	form.state = tpad.forms.global_network:show(form.playername)
 	form.formname = "tpad.forms.global_network"
 
-	form.global = submit.global_helper()
+	form.globalnet = submit.global_helper()
 
 	local last_index = last_selected_global_index[form.playername]
 	local pads_listbox = form.state:get("pads_listbox")
 	
 	pads_listbox:clearItems()
-	for _, pad_item in ipairs(form.global.by_index) do
+	for _, pad_item in ipairs(form.globalnet.by_index) do
 		pads_listbox:addItem(pad_item)
 	end
 	
@@ -304,8 +321,8 @@ end
 function submit.delete(form)
 	minetest.after(0, function()
 		local pads_listbox = form.state:get("pads_listbox")
-		local selected_index = pads_listbox:getSelected()
-		local delete_pad = tpad.get_pad_by_index(form.ownername, selected_index, form.omit_private_pads)
+		local selected_item = pads_listbox:getSelectedItem()
+		local delete_pad = form.localnet.by_name[selected_item]
 		
 		if not delete_pad then
 			notify.warn(form.playername, "Please select a pad first")
@@ -390,13 +407,14 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 		form.state:get("visitor_label"):setText("Pad \"" .. pad.name .. "\", owned by " .. OWNER_ESCAPE_COLOR .. ownername)
 	end
 
-	local padlist = tpad.get_padlist(ownername, form.omit_private_pads)
+	form.localnet = submit.local_helper(ownername, form.omit_private_pads)
+	
 	local last_click_key = playername .. ":" .. ownername
 	local last_index = last_selected_index[last_click_key]
 
 	local pads_listbox = form.state:get("pads_listbox")
 	pads_listbox:clearItems()
-	for _, pad_item in ipairs(padlist) do
+	for _, pad_item in ipairs(form.localnet.by_index) do
 		pads_listbox:addItem(pad_item)
 	end
 	pads_listbox:setSelected(last_index)
@@ -510,35 +528,6 @@ function tpad.decorate_pad_data(pos, pad, ownername)
 	pad.local_fullname = pad.name .. " " .. pad.strpos .. " " .. short_padtype_string[pad.type]
 	pad.global_fullname = "[" .. ownername .. "] " .. pad.name .. " " .. pad.strpos
 	return pad
-end
-
--- prepare the list of pads to be shown in the main dialog
-function tpad.get_padlist(ownername, omit_private_pads)
-	local pads = tpad._get_stored_pads(ownername)
-	local result = {}
-	for strpos, pad in pairs(pads) do
-		pad = tpad.decorate_pad_data(strpos, pad, ownername)
-		local skip = omit_private_pads and pad.type == PRIVATE_PAD
-		if not skip then
-			table.insert(result, pad.local_fullname)		
-		end
-	end
-	table.sort(result)
-	return result
-end
-
--- used by the main dialog to pair up chosen pad with stored pads
-function tpad.get_pad_by_index(ownername, index, omit_private_pads)
-	local pads = tpad._get_stored_pads(ownername)
-	local padlist = tpad.get_padlist(ownername, omit_private_pads)
-	local chosen = padlist[index]
-	if not chosen then return end
-	for strpos, pad in pairs(pads) do
-		pad = tpad.decorate_pad_data(strpos, pad, ownername)
-		if chosen == pad.global_fullname or chosen == pad.local_fullname then
-			return pad
-		end
-	end
 end
 
 function tpad.get_pad_data(pos)
