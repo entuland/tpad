@@ -691,6 +691,7 @@ minetest.register_node(tpad.nodename, {
 	drawtype = "mesh",
 	tiles = { tpad.texture },
 	mesh = tpad.mesh,
+	paramtype = "light",	
 	paramtype2 = "facedir",
 	on_place = tpad.on_place,
 	collision_box = collision_box,
