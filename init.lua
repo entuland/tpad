@@ -339,7 +339,7 @@ function submit.teleport(form)
 		return
 	end
 	local player = minetest.get_player_by_name(form.playername)
-	player:moveto(pad.pos, false)
+	player:move_to(pad.pos, false)
 	
 	local padname = form.globalnet and pad.global_fullname or pad.local_fullname
 	notify(form.playername, "Teleported to " .. padname)
