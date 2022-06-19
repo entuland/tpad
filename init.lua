@@ -204,7 +204,7 @@ function tpad.on_place(itemstack, placer, pointed_thing)
 	itemstack = minetest.rotate_node(itemstack, placer, pointed_thing)
 	local placed = minetest.get_node_or_nil(pos)
 	if placed and placed.name == tpad.nodename then		
-		local meta = minetest.env:get_meta(pos)
+		local meta = minetest.get_meta(pos)
 		local playername = placer:get_player_name()
 		meta:set_string("owner", playername)
 		meta:set_string("infotext", "TPAD Station by " .. playername .. " - right click to interact")
@@ -463,7 +463,7 @@ end
 
 function tpad.on_rightclick(clicked_pos, node, clicker)
 	local playername = clicker:get_player_name()
-	local clicked_meta = minetest.env:get_meta(clicked_pos)
+	local clicked_meta = minetest.get_meta(clicked_pos)
 	local ownername = clicked_meta:get_string("owner")
 	local pad = tpad.get_pad_data(clicked_pos)
 	
@@ -528,7 +528,7 @@ function tpad.on_rightclick(clicked_pos, node, clicker)
 end
 
 function tpad.can_dig(pos, player)
-	local meta = minetest.env:get_meta(pos)
+	local meta = minetest.get_meta(pos)
 	local ownername = meta:get_string("owner")
 	local playername = player:get_player_name()
 	if ownername == "" or ownername == nil or playername == ownername 
@@ -540,7 +540,7 @@ function tpad.can_dig(pos, player)
 end
 
 function tpad.on_destruct(pos)
-	local meta = minetest.env:get_meta(pos)
+	local meta = minetest.get_meta(pos)
 	local ownername = meta:get_string("owner")
 	tpad.del_pad(ownername, pos)
 end
@@ -646,7 +646,7 @@ function tpad.decorate_pad_data(pos, pad, ownername)
 end
 
 function tpad.get_pad_data(pos)
-	local meta = minetest.env:get_meta(pos)
+	local meta = minetest.get_meta(pos)
 	local ownername = meta:get_string("owner")
 	local pads = tpad._get_stored_pads(ownername)
 	local strpos = minetest.pos_to_string(pos)
@@ -656,7 +656,7 @@ function tpad.get_pad_data(pos)
 end
 
 function tpad.set_pad_data(pos, padname, padtype)
-	local meta = minetest.env:get_meta(pos)
+	local meta = minetest.get_meta(pos)
 	local ownername = meta:get_string("owner")
 	local pads = tpad._get_stored_pads(ownername)
 	local strpos = minetest.pos_to_string(pos)
