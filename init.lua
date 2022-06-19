@@ -5,7 +5,6 @@ tpad.texture = "tpad-texture.png"
 tpad.mesh = "tpad-mesh.obj"
 tpad.nodename = "tpad:tpad"
 tpad.mod_path = minetest.get_modpath(tpad.mod_name)
-tpad.settings_file = minetest.get_worldpath() .. "/mod_storage/" .. tpad.mod_name .. ".custom.conf"
 
 local PRIVATE_PAD_STRING = "Private (only owner)"
 local  PUBLIC_PAD_STRING = "Public (only owner's network)"
@@ -214,42 +213,6 @@ function tpad.on_place(itemstack, placer, pointed_thing)
 end
 
 local submit = {}
-
-function tpad.set_max_total_pads(max)
-	if not max then max = 0 end
-	local settings = Settings(tpad.settings_file)
-	settings:set("max_total_pads_per_player", max)
-	settings:write()
-end
-
-function tpad.get_max_total_pads()
-	local settings = Settings(tpad.settings_file)
-	local max = tonumber(settings:get("max_total_pads_per_player"))
-	if not max then
-		tpad.set_max_total_pads(100)
-		return 100
-	end
-	return max
-end
-tpad.get_max_total_pads()
-
-function tpad.set_max_global_pads(max)
-	if not max then max = 0 end
-	local settings = Settings(tpad.settings_file)
-	settings:set("max_global_pads_per_player", max)
-	settings:write()
-end
-
-function tpad.get_max_global_pads()
-	local settings = Settings(tpad.settings_file)
-	local max = tonumber(settings:get("max_global_pads_per_player"))
-	if not max then
-		tpad.set_max_global_pads(4)
-		return 4
-	end
-	return max
-end
-tpad.get_max_global_pads()
 
 function tpad.max_total_pads_reached(placer)
 	local placername = placer:get_player_name()
