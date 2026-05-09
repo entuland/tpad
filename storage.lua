@@ -104,6 +104,8 @@ local function _storage_version_check()
 			tpad._copy_file(storage_path .. tpad.mod_name, storage_path .. tpad.mod_name .. ".1.1.backup") 
 		end
 		_convert_storage_1_1()
+	elseif storage_version == "1.2" then
+		-- all good, storage version didn't change from 1.2
 	elseif storage_version ~= "" and storage_version ~= tpad.version then
 		error("Mod storage version not supported, aborting to prevent data corruption")
 	end

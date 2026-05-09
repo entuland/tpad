@@ -1,5 +1,5 @@
 tpad = {}
-tpad.version = "1.2"
+tpad.version = "1.3"
 tpad.mod_name = minetest.get_current_modname()
 tpad.texture = "tpad-texture.png"
 tpad.mesh = "tpad-mesh.obj"
