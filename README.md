@@ -1,7 +1,7 @@
 # tpad
 A teleporter-pads mod for Minetest
 
-Developed and tested on Minetest 0.4.16 - try in other versions at your own risk :)
+Developed on Minetest 0.4.16, tested in Luanti 5.16.0 - try in other versions at your own risk :)
 
 WIP mod forum discussion: https://forum.minetest.net/viewtopic.php?f=9&t=20081
 
@@ -16,7 +16,7 @@ WIP mod forum discussion: https://forum.minetest.net/viewtopic.php?f=9&t=20081
 - [Screenshots](#screenshots)
 
 ## Recipe
-The recipe can be customized altering the file `custom.recipes.lua`, created in the mod's folder on first run and never overwritten.
+The recipe can be customized altering the file `custom.recipes.lua`, created in the `mod_data/tpad` folder on first run and never overwritten.
 
     W = any wood planks
     B = bronze ingot
@@ -24,6 +24,8 @@ The recipe can be customized altering the file `custom.recipes.lua`, created in 
     WBW
     BWB
     WBW
+
+(if you had a previous version that saved this file in the mod folder you'll have to copy the custom recipe over to the new position)
 
 ![Crafting](/screenshots/crafting.png)
 
